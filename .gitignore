@@ -1,0 +1,11 @@
+.vsconfig
+.vs
+Library
+Logs
+Packages
+obj
+ProjectSettings
+Temp
+UserSettings
+Assembly-CSharp.csproj
+nsmf.sln

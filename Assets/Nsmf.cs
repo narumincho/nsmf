@@ -6,9 +6,9 @@ namespace Nsmf
     {
         public static ushort BytesWithOffsetToUInt16(in byte[] bytes, in uint offset)
         {
-            byte value0 = bytes[offset];
-            byte value1 = bytes[offset + 1];
-            return (ushort)((value1 << 8) + value0);
+            int value0 = bytes[offset];
+            int value1 = bytes[offset + 1];
+            return (ushort)((value0 << 8) + value1);
 
         }
     }
@@ -108,7 +108,7 @@ namespace Nsmf
                 {
                     0 => Format.Format0,
                     1 => Format.Format1,
-                    _ => throw new System.Exception("サポートされていないフォーマットです")
+                    var e => throw new System.Exception("サポートされていないフォーマットです " + offset + " ," + e)
                 },
                 2
             );
@@ -128,7 +128,7 @@ namespace Nsmf
         private static (ushort, uint) ParseDivision(in byte[] bytes, in uint offset)
         {
             ushort division = ByteFunc.BytesWithOffsetToUInt16(bytes, offset);
-            if (0x80 < division)
+            if ((division & 0x8000) != 0)
             {
                 throw new System.Exception("分解能を 何分何秒何フレーム という形式で指定したものは未サポートです");
             }

@@ -4,12 +4,36 @@ namespace Nsmf
 {
     public class ByteFunc
     {
-        public static ushort BytesWithOffsetToUInt16(in byte[] bytes, in uint offset)
+        public static ushort BytesWithOffsetToUInt16(in byte[] bytes, in ulong offset)
         {
-            int value0 = bytes[offset];
-            int value1 = bytes[offset + 1];
+            ushort value0 = bytes[offset];
+            ushort value1 = bytes[offset + 1];
             return (ushort)((value0 << 8) + value1);
 
+        }
+
+        public static uint BytesWithOffsetToUInt32(in byte[] bytes, in ulong offset)
+        {
+            uint value0 = bytes[offset];
+            uint value1 = bytes[offset + 1];
+            uint value2 = bytes[offset + 2];
+            uint value3 = bytes[offset + 3];
+            return (value0 << 24) + (value1 << 16) + (value2 << 8) + value3;
+        }
+
+        public static (ulong, ulong) BytesWithOffsetToULongVariableLengthQuantity(in byte[] bytes, in ulong offset)
+        {
+            ulong value = 0;
+            for (ulong index = 0; (ulong)bytes.Length < index; index += 1)
+            {
+                byte b = bytes[offset + index];
+                value = (value << 8) + (ulong)(b & 0x7f);
+                if ((b & 0x8000) != 0)
+                {
+                    return (value, index);
+                }
+            }
+            throw new System.Exception("可変長のデルタタイムを取得時に最後まで, 先頭ビットが0(これで終了)のものが見つからずにバイトの最後まで読み取ってしまった");
         }
     }
 
@@ -46,62 +70,46 @@ namespace Nsmf
             this.division = division;
         }
 
-        public static (Header, uint) FromBytes(in byte[] bytes)
+        public static (Header, ulong) FromBytes(in byte[] bytes)
         {
-            uint offset = ValidationMagic(bytes);
-            offset += ValidationHeaderLength(bytes, offset);
+            ulong offset = ValidationMagic(bytes);
+            offset += ValidationLength(bytes, offset);
 
-            (Format format, uint formatBytesLength) = ParseFormat(bytes, offset);
+            (Format format, ulong formatBytesLength) = ParseFormat(bytes, offset);
             offset += formatBytesLength;
 
-            (ushort trackLength, uint trackBytesLength) = ParseTrackLength(bytes, offset);
+            (ushort trackLength, ulong trackBytesLength) = ParseTrackLength(bytes, offset);
             offset += trackBytesLength;
 
-            (ushort divition, uint divitionBytesLength) = ParseDivision(bytes, offset);
+            (ushort divition, ulong divitionBytesLength) = ParseDivision(bytes, offset);
             offset += divitionBytesLength;
 
             return (new Header(format, trackLength, divition), offset);
         }
 
-        private static uint ValidationMagic(in byte[] bytes)
+        private static ulong ValidationMagic(in byte[] bytes)
         {
             if (bytes.Length < 4)
             {
                 throw new System.Exception("SMFのバイト数が足りません");
             }
-            byte magic0 = bytes[0];
-            byte magic1 = bytes[1];
-            byte magic2 = bytes[2];
-            byte magic3 = bytes[3];
-            if (
-                magic0 != 0x4d ||
-                magic1 != 0x54 ||
-                magic2 != 0x68 ||
-                magic3 != 0x64)
+            return (bytes[0], bytes[1], bytes[2], bytes[3]) switch
             {
-                throw new System.Exception("バイナリの先頭は 4D546884 (MThd) でない");
-            }
-            return 4;
+                (0x4d, 0x54, 0x68, 0x64) => 4,
+                _ => throw new System.Exception("バイナリの先頭は 0x4D546884 (MThd) でない")
+            };
         }
 
-        private static uint ValidationHeaderLength(in byte[] bytes, in uint offset)
+        private static ulong ValidationLength(in byte[] bytes, in ulong offset)
         {
-            byte length0 = bytes[offset + 0];
-            byte length1 = bytes[offset + 1];
-            byte length2 = bytes[offset + 2];
-            byte length3 = bytes[offset + 3];
-            if (
-                length0 != 0x00 ||
-                length1 != 0x00 ||
-                length2 != 0x00 ||
-                length3 != 0x06)
+            return ByteFunc.BytesWithOffsetToUInt32(bytes, offset) switch
             {
-                throw new System.Exception("ヘッダーの長さの指定が 6 ではない");
-            }
-            return 4;
+                6 => 4,
+                _ => throw new System.Exception("ヘッダーの長さの指定が 6 ではない")
+            };
         }
 
-        private static (Format, uint) ParseFormat(in byte[] bytes, in uint offset)
+        private static (Format, ulong) ParseFormat(in byte[] bytes, in ulong offset)
         {
             return (
                 ByteFunc.BytesWithOffsetToUInt16(bytes, offset) switch
@@ -114,18 +122,24 @@ namespace Nsmf
             );
         }
 
-        private static (ushort, uint) ParseTrackLength(in byte[] bytes, in uint offset)
+        /// <summary>
+        /// トラック数を読み取る
+        /// </summary>
+        /// <param name="bytes">バイナリ</param>
+        /// <param name="offset">読み取り位置</param>
+        /// <returns>(トラック数, 読み取ったbyte数)</returns>
+        private static (ushort, ulong) ParseTrackLength(in byte[] bytes, in ulong offset)
         {
             return (ByteFunc.BytesWithOffsetToUInt16(bytes, offset), 2);
         }
 
         /// <summary>
-        /// 分解能 時間単位を取得する
+        /// 分解能 時間単位を読み取る
         /// </summary>
-        /// <param name="bytes"></param>
-        /// <param name="offset"></param>
+        /// <param name="bytes">バイナリ</param>
+        /// <param name="offset">読み取り位置</param>
         /// <returns>(分解能, 読み取ったbyte数)</returns>
-        private static (ushort, uint) ParseDivision(in byte[] bytes, in uint offset)
+        private static (ushort, ulong) ParseDivision(in byte[] bytes, in ulong offset)
         {
             ushort division = ByteFunc.BytesWithOffsetToUInt16(bytes, offset);
             if ((division & 0x8000) != 0)
@@ -149,5 +163,154 @@ namespace Nsmf
         /// トラック数が1つ以上持つことができる形式
         /// </summary>
         Format1
+    }
+
+    public class Track
+    {
+        public Track()
+        {
+
+        }
+
+        public static (Track, ulong) FromBytes(in byte[] bytes, in ulong offset)
+        {
+            ulong magicLength = ValidationMagic(bytes, offset);
+            return (new Track(), magicLength);
+            (uint length, ulong bytesLength) = ParseLength(bytes, offset);
+
+        }
+
+        private static ulong ValidationMagic(in byte[] bytes, in ulong offset)
+        {
+            return (bytes[offset + 0], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]) switch
+            {
+                (0x4d, 0x54, 0x72, 0x6b) => 4,
+                _ => throw new System.Exception("トラックの先頭は 0x4D54726B (MThd) でない")
+            };
+        }
+
+        private static (uint, ulong) ParseLength(in byte[] bytes, in ulong offset)
+        {
+            return (ByteFunc.BytesWithOffsetToUInt32(bytes, offset), 4);
+        }
+    }
+
+    public class TimeAndEvent
+    {
+        public static (TimeAndEvent, ulong) FromBytes(in byte[] bytes, in ulong offset)
+        {
+            (ulong deltaTime, ulong deltaTimeBytesLength) = ParseDeltaTime(bytes, offset);
+            return (new TimeAndEvent(), 0);
+
+        }
+
+        public static (ulong, ulong) ParseDeltaTime(in byte[] bytes, in ulong offset)
+        {
+            return ByteFunc.BytesWithOffsetToULongVariableLengthQuantity(bytes, offset);
+        }
+    }
+
+    public class Event
+    {
+        public static (Event, ulong) FromBytes(in byte[] bytes, in ulong offset)
+        {
+            throw new System.NotImplementedException("イベント解析は未実装です");
+        }
+    }
+
+    public class MidiEvent : Event
+    {
+        public static (MidiEvent, ulong)? FromBytesOrNotMatch(in byte[] bytes, in ulong offset)
+        {
+            return null;
+        }
+    }
+
+    public class SysEx : Event
+    {
+        public static (MidiEvent, ulong)? FromBytesOrNotMatch(in byte[] bytes, in ulong offset)
+        {
+
+            return null;
+        }
+    }
+
+    public class MetaEvent : Event
+    {
+        public static (MetaEvent, ulong)? FromBytesOrNotMatch(in byte[] bytes, in ulong initOffset)
+        {
+            ulong offset = initOffset;
+            byte metaEventType = bytes[offset];
+            offset += 1;
+
+            (ulong length, ulong lengthBytesLength) = ByteFunc.BytesWithOffsetToULongVariableLengthQuantity(bytes, offset);
+            offset += lengthBytesLength;
+
+            ulong byteLength = offset + length;
+
+            return metaEventType switch
+            {
+                0xff =>
+                    metaEventType switch
+                    {
+                        0x00 =>
+                            throw new System.NotImplementedException("シーケンス番号は未実装です"),
+                        0x01 =>
+                            throw new System.NotImplementedException("テキストイベントは未実装です"),
+                        0x02 =>
+                            throw new System.NotImplementedException("著作権表示は未実装です"),
+
+                        0x03 =>
+                           throw new System.NotImplementedException("シーケンス名またはトラック名は未実装です"),
+
+                        0x04 =>
+                           throw new System.NotImplementedException("楽器名は未実装です"),
+
+                        0x05 =>
+                           throw new System.NotImplementedException("歌詞は未実装です"),
+
+                        0x06 =>
+                          throw new System.NotImplementedException("マーカーは未実装です"),
+
+                        0x07 =>
+                          throw new System.NotImplementedException("キュー・ポイントは未実装です"),
+
+                        0x2f =>
+                            (new EndOfTrack(), byteLength),
+
+                        0x51 =>
+                            (new Tempo(bytes[offset + 0], bytes[offset + 1], bytes[offset + 2]), byteLength),
+
+                        0x54 =>
+                            throw new System.NotImplementedException("SMPTE オフセットは未実装です"),
+
+                        0x58 =>
+                            throw new System.NotImplementedException("拍子記号は未実装です"),
+                        0x7f =>
+                            throw new System.NotImplementedException("シーケンサー特定メタ・イベントは未実装です"),
+                        _ =>
+                            throw new System.Exception("謎のメタイベントを受け取った eventType" + metaEventType)
+
+                    }
+                ,
+                _ => null
+            };
+        }
+    }
+
+    public class EndOfTrack : MetaEvent
+    {
+
+    }
+
+    public class Tempo: MetaEvent
+    {
+        public readonly float tempo;
+
+        public Tempo(in byte tempoByte0, in byte tempoByte1, in byte tempoByte2)
+        {
+            int micro = (tempoByte0 << 16) + (tempoByte1 << 8) + tempoByte2;
+            this.tempo = 60 * 1000 * 1000 / micro;
+        }
     }
 }

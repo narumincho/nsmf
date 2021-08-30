@@ -33,7 +33,7 @@ namespace Nsmf
                     return (value, index);
                 }
             }
-            throw new System.Exception("‰Â•Ï’·‚Ìƒfƒ‹ƒ^ƒ^ƒCƒ€‚ğæ“¾‚ÉÅŒã‚Ü‚Å, æ“ªƒrƒbƒg‚ª0(‚±‚ê‚ÅI—¹)‚Ì‚à‚Ì‚ªŒ©‚Â‚©‚ç‚¸‚ÉƒoƒCƒg‚ÌÅŒã‚Ü‚Å“Ç‚İæ‚Á‚Ä‚µ‚Ü‚Á‚½");
+            throw new System.Exception("å¯å¤‰é•·ã®ãƒ‡ãƒ«ã‚¿ã‚¿ã‚¤ãƒ ã‚’å–å¾—æ™‚ã«æœ€å¾Œã¾ã§, å…ˆé ­ãƒ“ãƒƒãƒˆãŒ0(ã“ã‚Œã§çµ‚äº†)ã®ã‚‚ã®ãŒè¦‹ã¤ã‹ã‚‰ãšã«ãƒã‚¤ãƒˆã®æœ€å¾Œã¾ã§èª­ã¿å–ã£ã¦ã—ã¾ã£ãŸ");
         }
     }
 
@@ -47,10 +47,10 @@ namespace Nsmf
         }
 
         /// <summary>
-        /// SMF‚ÌƒoƒCƒiƒŠ‚ğ‰ğÍ‚·‚é
+        /// SMFã®ãƒã‚¤ãƒŠãƒªã‚’è§£æã™ã‚‹
         /// </summary>
-        /// <param name="bytes">ƒoƒCƒiƒŠ</param>
-        /// <returns>‰ğÍ‚µ‚½Œ‹‰Ê</returns>
+        /// <param name="bytes">ãƒã‚¤ãƒŠãƒª</param>
+        /// <returns>è§£æã—ãŸçµæœ</returns>
         public static Smf FromBytes(in byte[] bytes)
         {
             return new Smf(Header.FromBytes(bytes).Item1);
@@ -91,12 +91,12 @@ namespace Nsmf
         {
             if (bytes.Length < 4)
             {
-                throw new System.Exception("SMF‚ÌƒoƒCƒg”‚ª‘«‚è‚Ü‚¹‚ñ");
+                throw new System.Exception("SMFã®ãƒã‚¤ãƒˆæ•°ãŒè¶³ã‚Šã¾ã›ã‚“");
             }
             return (bytes[0], bytes[1], bytes[2], bytes[3]) switch
             {
                 (0x4d, 0x54, 0x68, 0x64) => 4,
-                _ => throw new System.Exception("ƒoƒCƒiƒŠ‚Ìæ“ª‚Í 0x4D546884 (MThd) ‚Å‚È‚¢")
+                _ => throw new System.Exception("ãƒã‚¤ãƒŠãƒªã®å…ˆé ­ã¯ 0x4D546884 (MThd) ã§ãªã„")
             };
         }
 
@@ -105,7 +105,7 @@ namespace Nsmf
             return ByteFunc.BytesWithOffsetToUInt32(bytes, offset) switch
             {
                 6 => 4,
-                _ => throw new System.Exception("ƒwƒbƒ_[‚Ì’·‚³‚Ìw’è‚ª 6 ‚Å‚Í‚È‚¢")
+                _ => throw new System.Exception("ãƒ˜ãƒƒãƒ€ãƒ¼ã®é•·ã•ã®æŒ‡å®šãŒ 6 ã§ã¯ãªã„")
             };
         }
 
@@ -116,51 +116,51 @@ namespace Nsmf
                 {
                     0 => Format.Format0,
                     1 => Format.Format1,
-                    var e => throw new System.Exception("ƒTƒ|[ƒg‚³‚ê‚Ä‚¢‚È‚¢ƒtƒH[ƒ}ƒbƒg‚Å‚· " + offset + " ," + e)
+                    var e => throw new System.Exception("ã‚µãƒãƒ¼ãƒˆã•ã‚Œã¦ã„ãªã„ãƒ•ã‚©ãƒ¼ãƒãƒƒãƒˆã§ã™ " + offset + " ," + e)
                 },
                 2
             );
         }
 
         /// <summary>
-        /// ƒgƒ‰ƒbƒN”‚ğ“Ç‚İæ‚é
+        /// ãƒˆãƒ©ãƒƒã‚¯æ•°ã‚’èª­ã¿å–ã‚‹
         /// </summary>
-        /// <param name="bytes">ƒoƒCƒiƒŠ</param>
-        /// <param name="offset">“Ç‚İæ‚èˆÊ’u</param>
-        /// <returns>(ƒgƒ‰ƒbƒN”, “Ç‚İæ‚Á‚½byte”)</returns>
+        /// <param name="bytes">ãƒã‚¤ãƒŠãƒª</param>
+        /// <param name="offset">èª­ã¿å–ã‚Šä½ç½®</param>
+        /// <returns>(ãƒˆãƒ©ãƒƒã‚¯æ•°, èª­ã¿å–ã£ãŸbyteæ•°)</returns>
         private static (ushort, ulong) ParseTrackLength(in byte[] bytes, in ulong offset)
         {
             return (ByteFunc.BytesWithOffsetToUInt16(bytes, offset), 2);
         }
 
         /// <summary>
-        /// •ª‰ğ”\ ŠÔ’PˆÊ‚ğ“Ç‚İæ‚é
+        /// åˆ†è§£èƒ½ æ™‚é–“å˜ä½ã‚’èª­ã¿å–ã‚‹
         /// </summary>
-        /// <param name="bytes">ƒoƒCƒiƒŠ</param>
-        /// <param name="offset">“Ç‚İæ‚èˆÊ’u</param>
-        /// <returns>(•ª‰ğ”\, “Ç‚İæ‚Á‚½byte”)</returns>
+        /// <param name="bytes">ãƒã‚¤ãƒŠãƒª</param>
+        /// <param name="offset">èª­ã¿å–ã‚Šä½ç½®</param>
+        /// <returns>(åˆ†è§£èƒ½, èª­ã¿å–ã£ãŸbyteæ•°)</returns>
         private static (ushort, ulong) ParseDivision(in byte[] bytes, in ulong offset)
         {
             ushort division = ByteFunc.BytesWithOffsetToUInt16(bytes, offset);
             if ((division & 0x8000) != 0)
             {
-                throw new System.Exception("•ª‰ğ”\‚ğ ‰½•ª‰½•b‰½ƒtƒŒ[ƒ€ ‚Æ‚¢‚¤Œ`®‚Åw’è‚µ‚½‚à‚Ì‚Í–¢ƒTƒ|[ƒg‚Å‚·");
+                throw new System.Exception("åˆ†è§£èƒ½ã‚’ ä½•åˆ†ä½•ç§’ä½•ãƒ•ãƒ¬ãƒ¼ãƒ  ã¨ã„ã†å½¢å¼ã§æŒ‡å®šã—ãŸã‚‚ã®ã¯æœªã‚µãƒãƒ¼ãƒˆã§ã™");
             }
             return (division, 2);
         }
     }
 
     /// <summary>
-    /// ƒtƒH[ƒ}ƒbƒg. SMF ‚Ìƒo[ƒWƒ‡ƒ“‚Ì‚æ‚¤‚È‚à‚Ì
+    /// ãƒ•ã‚©ãƒ¼ãƒãƒƒãƒˆ. SMF ã®ãƒãƒ¼ã‚¸ãƒ§ãƒ³ã®ã‚ˆã†ãªã‚‚ã®
     /// </summary>
     public enum Format
     {
         /// <summary>
-        /// ƒgƒ‰ƒbƒN”‚ª1‚Â‚ÌŒ`®
+        /// ãƒˆãƒ©ãƒƒã‚¯æ•°ãŒ1ã¤ã®å½¢å¼
         /// </summary>
         Format0,
         /// <summary>
-        /// ƒgƒ‰ƒbƒN”‚ª1‚ÂˆÈã‚Â‚±‚Æ‚ª‚Å‚«‚éŒ`®
+        /// ãƒˆãƒ©ãƒƒã‚¯æ•°ãŒ1ã¤ä»¥ä¸ŠæŒã¤ã“ã¨ãŒã§ãã‚‹å½¢å¼
         /// </summary>
         Format1
     }
@@ -185,7 +185,7 @@ namespace Nsmf
             return (bytes[offset + 0], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]) switch
             {
                 (0x4d, 0x54, 0x72, 0x6b) => 4,
-                _ => throw new System.Exception("ƒgƒ‰ƒbƒN‚Ìæ“ª‚Í 0x4D54726B (MThd) ‚Å‚È‚¢")
+                _ => throw new System.Exception("ãƒˆãƒ©ãƒƒã‚¯ã®å…ˆé ­ã¯ 0x4D54726B (MThd) ã§ãªã„")
             };
         }
 
@@ -214,7 +214,7 @@ namespace Nsmf
     {
         public static (Event, ulong) FromBytes(in byte[] bytes, in ulong offset)
         {
-            throw new System.NotImplementedException("ƒCƒxƒ“ƒg‰ğÍ‚Í–¢À‘•‚Å‚·");
+            throw new System.NotImplementedException("ã‚¤ãƒ™ãƒ³ãƒˆè§£æã¯æœªå®Ÿè£…ã§ã™");
         }
     }
 
@@ -254,26 +254,26 @@ namespace Nsmf
                     metaEventType switch
                     {
                         0x00 =>
-                            throw new System.NotImplementedException("ƒV[ƒPƒ“ƒX”Ô†‚Í–¢À‘•‚Å‚·"),
+                            throw new System.NotImplementedException("ã‚·ãƒ¼ã‚±ãƒ³ã‚¹ç•ªå·ã¯æœªå®Ÿè£…ã§ã™"),
                         0x01 =>
-                            throw new System.NotImplementedException("ƒeƒLƒXƒgƒCƒxƒ“ƒg‚Í–¢À‘•‚Å‚·"),
+                            throw new System.NotImplementedException("ãƒ†ã‚­ã‚¹ãƒˆã‚¤ãƒ™ãƒ³ãƒˆã¯æœªå®Ÿè£…ã§ã™"),
                         0x02 =>
-                            throw new System.NotImplementedException("’˜ìŒ •\¦‚Í–¢À‘•‚Å‚·"),
+                            throw new System.NotImplementedException("è‘—ä½œæ¨©è¡¨ç¤ºã¯æœªå®Ÿè£…ã§ã™"),
 
                         0x03 =>
-                           throw new System.NotImplementedException("ƒV[ƒPƒ“ƒX–¼‚Ü‚½‚Íƒgƒ‰ƒbƒN–¼‚Í–¢À‘•‚Å‚·"),
+                           throw new System.NotImplementedException("ã‚·ãƒ¼ã‚±ãƒ³ã‚¹åã¾ãŸã¯ãƒˆãƒ©ãƒƒã‚¯åã¯æœªå®Ÿè£…ã§ã™"),
 
                         0x04 =>
-                           throw new System.NotImplementedException("ŠyŠí–¼‚Í–¢À‘•‚Å‚·"),
+                           throw new System.NotImplementedException("æ¥½å™¨åã¯æœªå®Ÿè£…ã§ã™"),
 
                         0x05 =>
-                           throw new System.NotImplementedException("‰ÌŒ‚Í–¢À‘•‚Å‚·"),
+                           throw new System.NotImplementedException("æ­Œè©ã¯æœªå®Ÿè£…ã§ã™"),
 
                         0x06 =>
-                          throw new System.NotImplementedException("ƒ}[ƒJ[‚Í–¢À‘•‚Å‚·"),
+                          throw new System.NotImplementedException("ãƒãƒ¼ã‚«ãƒ¼ã¯æœªå®Ÿè£…ã§ã™"),
 
                         0x07 =>
-                          throw new System.NotImplementedException("ƒLƒ…[Eƒ|ƒCƒ“ƒg‚Í–¢À‘•‚Å‚·"),
+                          throw new System.NotImplementedException("ã‚­ãƒ¥ãƒ¼ãƒ»ãƒã‚¤ãƒ³ãƒˆã¯æœªå®Ÿè£…ã§ã™"),
 
                         0x2f =>
                             (new EndOfTrack(), byteLength),
@@ -282,14 +282,14 @@ namespace Nsmf
                             (new Tempo(bytes[offset + 0], bytes[offset + 1], bytes[offset + 2]), byteLength),
 
                         0x54 =>
-                            throw new System.NotImplementedException("SMPTE ƒIƒtƒZƒbƒg‚Í–¢À‘•‚Å‚·"),
+                            throw new System.NotImplementedException("SMPTE ã‚ªãƒ•ã‚»ãƒƒãƒˆã¯æœªå®Ÿè£…ã§ã™"),
 
                         0x58 =>
-                            throw new System.NotImplementedException("”q‹L†‚Í–¢À‘•‚Å‚·"),
+                            throw new System.NotImplementedException("æ‹å­è¨˜å·ã¯æœªå®Ÿè£…ã§ã™"),
                         0x7f =>
-                            throw new System.NotImplementedException("ƒV[ƒPƒ“ƒT[“Á’èƒƒ^EƒCƒxƒ“ƒg‚Í–¢À‘•‚Å‚·"),
+                            throw new System.NotImplementedException("ã‚·ãƒ¼ã‚±ãƒ³ã‚µãƒ¼ç‰¹å®šãƒ¡ã‚¿ãƒ»ã‚¤ãƒ™ãƒ³ãƒˆã¯æœªå®Ÿè£…ã§ã™"),
                         _ =>
-                            throw new System.Exception("“ä‚Ìƒƒ^ƒCƒxƒ“ƒg‚ğó‚¯æ‚Á‚½ eventType" + metaEventType)
+                            throw new System.Exception("è¬ã®ãƒ¡ã‚¿ã‚¤ãƒ™ãƒ³ãƒˆã‚’å—ã‘å–ã£ãŸ eventType" + metaEventType)
 
                     }
                 ,

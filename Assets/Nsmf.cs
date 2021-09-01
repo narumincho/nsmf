@@ -226,13 +226,21 @@ namespace Nsmf
     {
         public static (Event, ulong) FromBytes(in byte[] bytes, in ulong offset)
         {
-            byte firstByte = bytes[offset];
-            if (firstByte == 0xff)
+            switch (bytes[offset])
             {
-                (MetaEvent metaEvent, ulong metaEventBytesLength) = MetaEvent.FromBytesOrNotMatch(bytes, offset + 1);
-                return (metaEvent, metaEventBytesLength + 1);
+                case 0xff:
+                    {
+                        (MetaEvent metaEvent, ulong metaEventBytesLength) = MetaEvent.FromBytesOrNotMatch(bytes, offset + 1);
+                        return (metaEvent, 1 + metaEventBytesLength);
+                    }
+                case 0xf0 or 0xf7:
+                    {
+                        (SysExEvent sysEx, ulong sysExBytesLength) = SysExEvent.FromBytesOrNotMatch(bytes, offset);
+                        return (sysEx, 1 + sysExBytesLength);
+                    }
             }
-            throw new System.NotImplementedException("メタイベント以外のイベントの解析は未実装です");
+
+            throw new System.NotImplementedException("メタイベント, SysEx以外のイベントの解析は未実装です");
         }
     }
 
@@ -244,12 +252,12 @@ namespace Nsmf
         }
     }
 
-    public class SysEx : Event
+    public class SysExEvent : Event
     {
-        public static (MidiEvent, ulong)? FromBytesOrNotMatch(in byte[] bytes, in ulong offset)
+        public static (SysExEvent, ulong) FromBytesOrNotMatch(in byte[] bytes, in ulong offset)
         {
-
-            return null;
+            (ulong length, ulong lengthBytesLength) = ByteFunc.BytesWithOffsetToULongVariableLengthQuantity(bytes, offset + 1);
+            return (new SysExEvent(), lengthBytesLength + length);
         }
     }
 

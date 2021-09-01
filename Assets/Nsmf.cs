@@ -197,10 +197,22 @@ namespace Nsmf
 
     public class TimeAndEvent
     {
+        public readonly ulong deltaTime;
+        public readonly Event @event;
+
+        public TimeAndEvent(in ulong deltaTime, in Event @event)
+        {
+            this.deltaTime = deltaTime;
+            this.@event = @event;
+        }
+
         public static (TimeAndEvent, ulong) FromBytes(in byte[] bytes, in ulong offset)
         {
             (ulong deltaTime, ulong deltaTimeBytesLength) = ParseDeltaTime(bytes, offset);
-            return (new TimeAndEvent(), 0);
+
+            (Event @event, ulong eventBytesLength) = Event.FromBytes(bytes, offset + deltaTimeBytesLength);
+
+            return (new TimeAndEvent(deltaTime, @event), deltaTimeBytesLength + eventBytesLength);
 
         }
 
@@ -214,7 +226,13 @@ namespace Nsmf
     {
         public static (Event, ulong) FromBytes(in byte[] bytes, in ulong offset)
         {
-            throw new System.NotImplementedException("イベント解析は未実装です");
+            byte firstByte = bytes[offset];
+            if (firstByte == 0xff)
+            {
+                (MetaEvent metaEvent, ulong metaEventBytesLength) = MetaEvent.FromBytesOrNotMatch(bytes, offset + 1);
+                return (metaEvent, metaEventBytesLength + 1);
+            }
+            throw new System.NotImplementedException("メタイベント以外のイベントの解析は未実装です");
         }
     }
 
@@ -237,64 +255,56 @@ namespace Nsmf
 
     public class MetaEvent : Event
     {
-        public static (MetaEvent, ulong)? FromBytesOrNotMatch(in byte[] bytes, in ulong initOffset)
+        public static (MetaEvent, ulong) FromBytesOrNotMatch(in byte[] bytes, in ulong offset)
         {
-            ulong offset = initOffset;
             byte metaEventType = bytes[offset];
-            offset += 1;
 
-            (ulong length, ulong lengthBytesLength) = ByteFunc.BytesWithOffsetToULongVariableLengthQuantity(bytes, offset);
-            offset += lengthBytesLength;
+            (ulong length, ulong lengthBytesLength) = ByteFunc.BytesWithOffsetToULongVariableLengthQuantity(bytes, offset + 1);
 
-            ulong byteLength = offset + length;
+            return (
+                metaEventType switch
+                {
+                    0x00 =>
+                        throw new System.NotImplementedException("シーケンス番号は未実装です"),
+                    0x01 =>
+                        throw new System.NotImplementedException("テキストイベントは未実装です"),
+                    0x02 =>
+                        throw new System.NotImplementedException("著作権表示は未実装です"),
 
-            return metaEventType switch
-            {
-                0xff =>
-                    metaEventType switch
-                    {
-                        0x00 =>
-                            throw new System.NotImplementedException("シーケンス番号は未実装です"),
-                        0x01 =>
-                            throw new System.NotImplementedException("テキストイベントは未実装です"),
-                        0x02 =>
-                            throw new System.NotImplementedException("著作権表示は未実装です"),
+                    0x03 =>
+                       throw new System.NotImplementedException("シーケンス名またはトラック名は未実装です"),
 
-                        0x03 =>
-                           throw new System.NotImplementedException("シーケンス名またはトラック名は未実装です"),
+                    0x04 =>
+                       throw new System.NotImplementedException("楽器名は未実装です"),
 
-                        0x04 =>
-                           throw new System.NotImplementedException("楽器名は未実装です"),
+                    0x05 =>
+                       throw new System.NotImplementedException("歌詞は未実装です"),
 
-                        0x05 =>
-                           throw new System.NotImplementedException("歌詞は未実装です"),
+                    0x06 =>
+                      throw new System.NotImplementedException("マーカーは未実装です"),
 
-                        0x06 =>
-                          throw new System.NotImplementedException("マーカーは未実装です"),
+                    0x07 =>
+                      throw new System.NotImplementedException("キュー・ポイントは未実装です"),
 
-                        0x07 =>
-                          throw new System.NotImplementedException("キュー・ポイントは未実装です"),
+                    0x2f =>
+                        new EndOfTrack(),
 
-                        0x2f =>
-                            (new EndOfTrack(), byteLength),
+                    0x51 =>
+                        new Tempo(bytes[offset + 0], bytes[offset + 1], bytes[offset + 2]),
 
-                        0x51 =>
-                            (new Tempo(bytes[offset + 0], bytes[offset + 1], bytes[offset + 2]), byteLength),
+                    0x54 =>
+                        throw new System.NotImplementedException("SMPTE オフセットは未実装です"),
 
-                        0x54 =>
-                            throw new System.NotImplementedException("SMPTE オフセットは未実装です"),
+                    0x58 =>
+                        throw new System.NotImplementedException("拍子記号は未実装です"),
+                    0x7f =>
+                        throw new System.NotImplementedException("シーケンサー特定メタ・イベントは未実装です"),
+                    _ =>
+                        throw new System.Exception("謎のメタイベントを受け取った eventType" + metaEventType)
 
-                        0x58 =>
-                            throw new System.NotImplementedException("拍子記号は未実装です"),
-                        0x7f =>
-                            throw new System.NotImplementedException("シーケンサー特定メタ・イベントは未実装です"),
-                        _ =>
-                            throw new System.Exception("謎のメタイベントを受け取った eventType" + metaEventType)
-
-                    }
-                ,
-                _ => null
-            };
+                },
+                1 + lengthBytesLength + length
+            );
         }
     }
 
@@ -303,7 +313,7 @@ namespace Nsmf
 
     }
 
-    public class Tempo: MetaEvent
+    public class Tempo : MetaEvent
     {
         public readonly float tempo;
 

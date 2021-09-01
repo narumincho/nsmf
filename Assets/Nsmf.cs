@@ -1,49 +1,118 @@
 #nullable enable
+using System.Collections.Generic;
 
 namespace Nsmf
 {
-    public class ByteFunc
+    /// <summary>
+    /// 読み取り専用にして, 読める範囲を制限した byte[]
+    /// </summary>
+    public class ReadonlyBytes
     {
-        public static ushort BytesWithOffsetToUInt16(in byte[] bytes, in ulong offset)
-        {
-            ushort value0 = bytes[offset];
-            ushort value1 = bytes[offset + 1];
-            return (ushort)((value0 << 8) + value1);
+        private readonly byte[] bytes;
+        private readonly uint readableAbusoluteIndexStart;
+        private readonly uint readableAbusoluteIndexEnd;
 
+        public ReadonlyBytes(in byte[] bytes)
+        {
+            this.bytes = bytes;
+            this.readableAbusoluteIndexStart = 0;
+            this.readableAbusoluteIndexEnd = (uint)bytes.Length;
         }
 
-        public static uint BytesWithOffsetToUInt32(in byte[] bytes, in ulong offset)
+        private ReadonlyBytes(in byte[] bytes, in uint readableAbusoluteIndexStart, in uint readableAbusoluteIndexEnd)
         {
-            uint value0 = bytes[offset];
-            uint value1 = bytes[offset + 1];
-            uint value2 = bytes[offset + 2];
-            uint value3 = bytes[offset + 3];
-            return (value0 << 24) + (value1 << 16) + (value2 << 8) + value3;
+            this.bytes = bytes;
+            this.readableAbusoluteIndexStart = readableAbusoluteIndexStart;
+            this.readableAbusoluteIndexEnd = readableAbusoluteIndexEnd;
         }
 
-        public static (ulong, ulong) BytesWithOffsetToULongVariableLengthQuantity(in byte[] bytes, in ulong offset)
+        public (byte, ReadonlyBytes) GetUInt8()
+        {
+            return (
+                this.bytes[this.readableAbusoluteIndexStart],
+                this.CreateWithStartIndex(1)
+            );
+        }
+
+        public (ushort, ReadonlyBytes) GetUInt16()
+        {
+            (ushort value0, ReadonlyBytes bytes0) = this.GetUInt8();
+            (ushort value1, ReadonlyBytes bytes1) = bytes0.GetUInt8();
+            return ((ushort)((value0 << 8) + value1), bytes1);
+        }
+
+        public (uint, ReadonlyBytes) GetUInt32()
+        {
+            (uint value0, ReadonlyBytes bytes0) = this.GetUInt8();
+            (uint value1, ReadonlyBytes bytes1) = bytes0.GetUInt8();
+            (uint value2, ReadonlyBytes bytes2) = bytes1.GetUInt8();
+            (uint value3, ReadonlyBytes bytes3) = bytes2.GetUInt8();
+            return ((value0 << 24) + (value1 << 16) + (value2 << 8) + value3, bytes3);
+        }
+
+        public (ulong, ReadonlyBytes) GetULongVariableLengthQuantity()
         {
             ulong value = 0;
-            for (ulong index = 0; (ulong)bytes.Length < index; index += 1)
+            ReadonlyBytes bytes = this;
+            for (uint index = this.readableAbusoluteIndexStart; this.readableAbusoluteIndexEnd < index; index += 1)
             {
-                byte b = bytes[offset + index];
+                (byte, ReadonlyBytes) tuple = bytes.GetUInt8();
+                byte b = tuple.Item1;
+                bytes = tuple.Item2;
                 value = (value << 8) + (ulong)(b & 0x7f);
                 if ((b & 0x8000) != 0)
                 {
-                    return (value, index);
+                    return (value, bytes);
                 }
             }
             throw new System.Exception("可変長のデルタタイムを取得時に最後まで, 先頭ビットが0(これで終了)のものが見つからずにバイトの最後まで読み取ってしまった");
         }
+
+        /// <summary>
+        /// 開始地点を指定してさらに範囲を絞った 新しい ReadonlyBytesAndRange を生成する
+        /// </summary>
+        /// <param name="relativeReadableStartIndex"></param>
+        /// <returns></returns>
+        public ReadonlyBytes CreateWithStartIndex(in uint relativeReadableStartIndex)
+        {
+            uint newReadableAbusoluteIndexStart = this.readableAbusoluteIndexStart + relativeReadableStartIndex;
+            if (this.readableAbusoluteIndexEnd < newReadableAbusoluteIndexStart)
+            {
+                throw new System.Exception("読み取り開始位置が前回の終了位置を超えている");
+            }
+            return new ReadonlyBytes(this.bytes, newReadableAbusoluteIndexStart, this.readableAbusoluteIndexEnd);
+        }
+
+        /// <summary>
+        /// 開始地点と長さを指定してさらに範囲を絞った 新しい ReadonlyBytesAndRange を生成する
+        /// </summary>
+        /// <param name="relativeReadableStartIndex"></param>
+        /// <returns></returns>
+        public ReadonlyBytes CreateWithStartAndEndIndex(in uint relativeReadableStartIndex, in uint length)
+        {
+            uint newReadableAbusoluteIndexStart = this.readableAbusoluteIndexStart + relativeReadableStartIndex;
+            uint newReadableAbusoluteIndexEnd = newReadableAbusoluteIndexStart + length;
+            if (this.readableAbusoluteIndexEnd < newReadableAbusoluteIndexEnd)
+            {
+                throw new System.Exception("読み取り終了位置が前回の終了位置を超えている");
+            }
+            return new ReadonlyBytes(this.bytes, newReadableAbusoluteIndexStart, newReadableAbusoluteIndexEnd);
+        }
+    }
+    public class ByteFunc
+    {
+
     }
 
     public class Smf
     {
         public readonly Header header;
+        public readonly List<Track> tracks;
 
-        public Smf(in Header header)
+        public Smf(in Header header, in List<Track> tracks)
         {
             this.header = header;
+            this.tracks = tracks;
         }
 
         /// <summary>
@@ -53,7 +122,16 @@ namespace Nsmf
         /// <returns>解析した結果</returns>
         public static Smf FromBytes(in byte[] bytes)
         {
-            return new Smf(Header.FromBytes(bytes).Item1);
+            (Header header, ReadonlyBytes readonlyBytes) = Header.FromBytes(new ReadonlyBytes(bytes));
+            List<Track> tracks = new List<Track>();
+            ReadonlyBytes bytesInLoop = readonlyBytes;
+            for (uint trackIndex = 0; trackIndex < header.trackLength; trackIndex += 1 )
+            {
+                (Track, ReadonlyBytes) tuple = Track.FromBytes(bytesInLoop);
+                tracks.Add(tuple.Item1);
+                bytesInLoop = tuple.Item2;
+            }
+            return new Smf(header, tracks);
         }
     }
 
@@ -70,83 +148,71 @@ namespace Nsmf
             this.division = division;
         }
 
-        public static (Header, ulong) FromBytes(in byte[] bytes)
+        public static (Header, ReadonlyBytes) FromBytes(in ReadonlyBytes bytes)
         {
-            ulong offset = ValidationMagic(bytes);
-            offset += ValidationLength(bytes, offset);
+            ReadonlyBytes bytesAfterValidationMagic = ValidationMagic(bytes);
+            ReadonlyBytes bytesAfterValidationLength = ValidationLength(bytesAfterValidationMagic);
 
-            (Format format, ulong formatBytesLength) = ParseFormat(bytes, offset);
-            offset += formatBytesLength;
+            (Format format, ReadonlyBytes bytesAfterParseFormat) = ParseFormat(bytesAfterValidationLength);
 
-            (ushort trackLength, ulong trackBytesLength) = ParseTrackLength(bytes, offset);
-            offset += trackBytesLength;
+            (ushort trackLength, ReadonlyBytes bytesAfterParseTrackLength) = ParseTrackLength(bytesAfterParseFormat);
 
-            (ushort divition, ulong divitionBytesLength) = ParseDivision(bytes, offset);
-            offset += divitionBytesLength;
+            (ushort divition, ReadonlyBytes bytesAfterParseDivision) = ParseDivision(bytesAfterParseTrackLength);
 
-            return (new Header(format, trackLength, divition), offset);
+            return (new Header(format, trackLength, divition), bytesAfterParseDivision);
         }
 
-        private static ulong ValidationMagic(in byte[] bytes)
+        private static ReadonlyBytes ValidationMagic(in ReadonlyBytes bytes)
         {
-            if (bytes.Length < 4)
+            return bytes.GetUInt32() switch
             {
-                throw new System.Exception("SMFのバイト数が足りません");
-            }
-            return (bytes[0], bytes[1], bytes[2], bytes[3]) switch
-            {
-                (0x4d, 0x54, 0x68, 0x64) => 4,
-                _ => throw new System.Exception("バイナリの先頭は 0x4D546884 (MThd) でない")
+                (0x4d546884, var newBytes) => newBytes,
+                (_, _) => throw new System.Exception("バイナリの先頭は 0x4D546884 (MThd) でない")
             };
         }
 
-        private static ulong ValidationLength(in byte[] bytes, in ulong offset)
+        private static ReadonlyBytes ValidationLength(in ReadonlyBytes bytes)
         {
-            return ByteFunc.BytesWithOffsetToUInt32(bytes, offset) switch
+            return bytes.GetUInt32() switch
             {
-                6 => 4,
+                (6, var newBytes) => newBytes,
                 _ => throw new System.Exception("ヘッダーの長さの指定が 6 ではない")
             };
         }
 
-        private static (Format, ulong) ParseFormat(in byte[] bytes, in ulong offset)
+        private static (Format, ReadonlyBytes) ParseFormat(in ReadonlyBytes bytes)
         {
+            (ushort formatAsNumber, ReadonlyBytes newBytes) = bytes.GetUInt16();
             return (
-                ByteFunc.BytesWithOffsetToUInt16(bytes, offset) switch
+                formatAsNumber switch
                 {
                     0 => Format.Format0,
                     1 => Format.Format1,
-                    var e => throw new System.Exception("サポートされていないフォーマットです " + offset + " ," + e)
+                    _ => throw new System.Exception("サポートされていないフォーマットです ")
                 },
-                2
+                newBytes
             );
         }
 
         /// <summary>
         /// トラック数を読み取る
         /// </summary>
-        /// <param name="bytes">バイナリ</param>
-        /// <param name="offset">読み取り位置</param>
-        /// <returns>(トラック数, 読み取ったbyte数)</returns>
-        private static (ushort, ulong) ParseTrackLength(in byte[] bytes, in ulong offset)
+        private static (ushort, ReadonlyBytes) ParseTrackLength(in ReadonlyBytes bytes)
         {
-            return (ByteFunc.BytesWithOffsetToUInt16(bytes, offset), 2);
+            return bytes.GetUInt16();
         }
 
         /// <summary>
         /// 分解能 時間単位を読み取る
         /// </summary>
-        /// <param name="bytes">バイナリ</param>
-        /// <param name="offset">読み取り位置</param>
-        /// <returns>(分解能, 読み取ったbyte数)</returns>
-        private static (ushort, ulong) ParseDivision(in byte[] bytes, in ulong offset)
+        private static (ushort, ReadonlyBytes) ParseDivision(in ReadonlyBytes bytes)
         {
-            ushort division = ByteFunc.BytesWithOffsetToUInt16(bytes, offset);
+            (ushort division, ReadonlyBytes newBytes) = bytes.GetUInt16();
             if ((division & 0x8000) != 0)
             {
                 throw new System.Exception("分解能を 何分何秒何フレーム という形式で指定したものは未サポートです");
             }
-            return (division, 2);
+            return (division, newBytes);
         }
     }
 
@@ -167,31 +233,41 @@ namespace Nsmf
 
     public class Track
     {
-        public Track()
+        public readonly List<TimeAndEvent> timeAndEvents;
+        public Track(in List<TimeAndEvent> timeAndEvents)
         {
-
+            this.timeAndEvents = timeAndEvents;
         }
 
-        public static (Track, ulong) FromBytes(in byte[] bytes, in ulong offset)
+        public static (Track, ReadonlyBytes) FromBytes(in ReadonlyBytes bytes)
         {
-            ulong magicLength = ValidationMagic(bytes, offset);
-            return (new Track(), magicLength);
-            (uint length, ulong bytesLength) = ParseLength(bytes, offset);
+            ReadonlyBytes bytesAftrerValidationMagic = ValidationMagic(bytes);
+            List<TimeAndEvent> timeAndEvents = new List<TimeAndEvent>();
 
-        }
+            (ulong length, ReadonlyBytes bytesAfterParseLength) = ParseLength(bytesAftrerValidationMagic);
 
-        private static ulong ValidationMagic(in byte[] bytes, in ulong offset)
-        {
-            return (bytes[offset + 0], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3]) switch
+            ReadonlyBytes bytesInLoop = bytesAfterParseLength;
+            for (uint timeAndEventIndex = 0; timeAndEventIndex < length; timeAndEventIndex += 1)
             {
-                (0x4d, 0x54, 0x72, 0x6b) => 4,
-                _ => throw new System.Exception("トラックの先頭は 0x4D54726B (MThd) でない")
+                (TimeAndEvent, ReadonlyBytes) tuple = TimeAndEvent.FromBytes(bytesInLoop);
+                timeAndEvents.Add(tuple.Item1);
+                bytesInLoop = tuple.Item2;
+            }
+            return (new Track(timeAndEvents), bytesInLoop);
+        }
+
+        private static ReadonlyBytes ValidationMagic(in ReadonlyBytes bytes)
+        {
+            return bytes.GetUInt32() switch
+            {
+                (0x4d54726b, var newBytes) => newBytes,
+                (_, _) => throw new System.Exception("トラックの先頭は 0x4D54726B (MThd) でない")
             };
         }
 
-        private static (uint, ulong) ParseLength(in byte[] bytes, in ulong offset)
+        private static (ulong, ReadonlyBytes) ParseLength(in ReadonlyBytes bytes)
         {
-            return (ByteFunc.BytesWithOffsetToUInt32(bytes, offset), 4);
+            return bytes.GetULongVariableLengthQuantity();
         }
     }
 
@@ -206,37 +282,35 @@ namespace Nsmf
             this.@event = @event;
         }
 
-        public static (TimeAndEvent, ulong) FromBytes(in byte[] bytes, in ulong offset)
+        public static (TimeAndEvent, ReadonlyBytes) FromBytes(in ReadonlyBytes bytes)
         {
-            (ulong deltaTime, ulong deltaTimeBytesLength) = ParseDeltaTime(bytes, offset);
+            (ulong deltaTime, ReadonlyBytes bytesAfterParseDeltaTime) = ParseDeltaTime(bytes);
 
-            (Event @event, ulong eventBytesLength) = Event.FromBytes(bytes, offset + deltaTimeBytesLength);
+            (Event @event, ReadonlyBytes bytesAfterEvent) = Event.FromBytes(bytesAfterParseDeltaTime);
 
-            return (new TimeAndEvent(deltaTime, @event), deltaTimeBytesLength + eventBytesLength);
-
+            return (new TimeAndEvent(deltaTime, @event), bytesAfterEvent);
         }
 
-        public static (ulong, ulong) ParseDeltaTime(in byte[] bytes, in ulong offset)
+        public static (ulong, ReadonlyBytes) ParseDeltaTime(in ReadonlyBytes bytes)
         {
-            return ByteFunc.BytesWithOffsetToULongVariableLengthQuantity(bytes, offset);
+            return bytes.GetULongVariableLengthQuantity();
         }
     }
 
     public class Event
     {
-        public static (Event, ulong) FromBytes(in byte[] bytes, in ulong offset)
+        public static (Event, ReadonlyBytes) FromBytes(in ReadonlyBytes bytes)
         {
-            switch (bytes[offset])
+            (byte eventFirstByte, ReadonlyBytes bytesByFirstBytes) = bytes.GetUInt8();
+            switch (eventFirstByte)
             {
                 case 0xff:
                     {
-                        (MetaEvent metaEvent, ulong metaEventBytesLength) = MetaEvent.FromBytesOrNotMatch(bytes, offset + 1);
-                        return (metaEvent, 1 + metaEventBytesLength);
+                        return MetaEvent.MetaEventFromBytes(bytesByFirstBytes);
                     }
                 case 0xf0 or 0xf7:
                     {
-                        (SysExEvent sysEx, ulong sysExBytesLength) = SysExEvent.FromBytesOrNotMatch(bytes, offset);
-                        return (sysEx, 1 + sysExBytesLength);
+                        return SysExEvent.SysExEventFromBytes(bytesByFirstBytes);
                     }
             }
 
@@ -246,28 +320,30 @@ namespace Nsmf
 
     public class MidiEvent : Event
     {
-        public static (MidiEvent, ulong)? FromBytesOrNotMatch(in byte[] bytes, in ulong offset)
+        public static (MidiEvent, ReadonlyBytes) MidiEventFromBytes(in ReadonlyBytes bytes)
         {
-            return null;
+            return (new MidiEvent(), bytes);
         }
     }
 
     public class SysExEvent : Event
     {
-        public static (SysExEvent, ulong) FromBytesOrNotMatch(in byte[] bytes, in ulong offset)
+        public static (SysExEvent, ReadonlyBytes) SysExEventFromBytes(in ReadonlyBytes bytes)
         {
-            (ulong length, ulong lengthBytesLength) = ByteFunc.BytesWithOffsetToULongVariableLengthQuantity(bytes, offset + 1);
-            return (new SysExEvent(), lengthBytesLength + length);
+            (ulong length, ReadonlyBytes newBytes) =
+                bytes.GetULongVariableLengthQuantity();
+            return (new SysExEvent(), newBytes.CreateWithStartIndex((uint)length));
         }
     }
 
     public class MetaEvent : Event
     {
-        public static (MetaEvent, ulong) FromBytesOrNotMatch(in byte[] bytes, in ulong offset)
+        public static (MetaEvent, ReadonlyBytes) MetaEventFromBytes(in ReadonlyBytes bytes)
         {
-            byte metaEventType = bytes[offset];
+            (byte metaEventType, ReadonlyBytes bytesAfterMetaEventType) = bytes.GetUInt8();
 
-            (ulong length, ulong lengthBytesLength) = ByteFunc.BytesWithOffsetToULongVariableLengthQuantity(bytes, offset + 1);
+            (ulong length, ReadonlyBytes bytesAfterLength) = bytesAfterMetaEventType.GetULongVariableLengthQuantity();
+            ReadonlyBytes bodyBytes = bytesAfterLength.CreateWithStartAndEndIndex(0, (uint)length);
 
             return (
                 metaEventType switch
@@ -298,7 +374,7 @@ namespace Nsmf
                         new EndOfTrack(),
 
                     0x51 =>
-                        new Tempo(bytes[offset + 0], bytes[offset + 1], bytes[offset + 2]),
+                     Tempo.FromBytes(bodyBytes),
 
                     0x54 =>
                         throw new System.NotImplementedException("SMPTE オフセットは未実装です"),
@@ -311,7 +387,7 @@ namespace Nsmf
                         throw new System.Exception("謎のメタイベントを受け取った eventType" + metaEventType)
 
                 },
-                1 + lengthBytesLength + length
+                bytesAfterLength.CreateWithStartIndex((uint)length)
             );
         }
     }
@@ -329,6 +405,14 @@ namespace Nsmf
         {
             int micro = (tempoByte0 << 16) + (tempoByte1 << 8) + tempoByte2;
             this.tempo = 60 * 1000 * 1000 / micro;
+        }
+
+        public static Tempo FromBytes(in ReadonlyBytes bytes)
+        {
+            (byte tempoByte0, ReadonlyBytes bytes0) = bytes.GetUInt8();
+            (byte tempoByte1, ReadonlyBytes bytes1) = bytes0.GetUInt8();
+            (byte tempoByte2, _) = bytes1.GetUInt8();
+            return new Tempo(tempoByte0, tempoByte1, tempoByte2);
         }
     }
 }

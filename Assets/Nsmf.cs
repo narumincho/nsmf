@@ -125,7 +125,7 @@ namespace Nsmf
             (Header header, ReadonlyBytes readonlyBytes) = Header.FromBytes(new ReadonlyBytes(bytes));
             List<Track> tracks = new List<Track>();
             ReadonlyBytes bytesInLoop = readonlyBytes;
-            for (uint trackIndex = 0; trackIndex < header.trackLength; trackIndex += 1 )
+            for (uint trackIndex = 0; trackIndex < header.trackLength; trackIndex += 1)
             {
                 (Track, ReadonlyBytes) tuple = Track.FromBytes(bytesInLoop);
                 tracks.Add(tuple.Item1);
@@ -249,9 +249,14 @@ namespace Nsmf
             ReadonlyBytes bytesInLoop = bytesAfterParseLength;
             for (uint timeAndEventIndex = 0; timeAndEventIndex < length; timeAndEventIndex += 1)
             {
-                (TimeAndEvent, ReadonlyBytes) tuple = TimeAndEvent.FromBytes(bytesInLoop);
-                timeAndEvents.Add(tuple.Item1);
-                bytesInLoop = tuple.Item2;
+                switch (TimeAndEvent.FromBytes(bytesInLoop)) {
+                    case (TimeAndEvent timeAndEvent, ReadonlyBytes newBytes):
+                        {
+                            timeAndEvents.Add(timeAndEvent);
+                            bytesInLoop = newBytes;
+                            break;
+                        }
+                };
             }
             return (new Track(timeAndEvents), bytesInLoop);
         }
@@ -282,13 +287,19 @@ namespace Nsmf
             this.@event = @event;
         }
 
-        public static (TimeAndEvent, ReadonlyBytes) FromBytes(in ReadonlyBytes bytes)
+        public static (TimeAndEvent, ReadonlyBytes)? FromBytes(in ReadonlyBytes bytes)
         {
             (ulong deltaTime, ReadonlyBytes bytesAfterParseDeltaTime) = ParseDeltaTime(bytes);
 
-            (Event @event, ReadonlyBytes bytesAfterEvent) = Event.FromBytes(bytesAfterParseDeltaTime);
+            (Event, ReadonlyBytes)? eventTuple = Event.FromBytes(bytesAfterParseDeltaTime);
 
-            return (new TimeAndEvent(deltaTime, @event), bytesAfterEvent);
+            return eventTuple switch
+            {
+                (Event @event, ReadonlyBytes bytesAfterEvent) =>
+                    (new TimeAndEvent(deltaTime, @event), bytesAfterEvent),
+                null =>
+                    null
+            };
         }
 
         public static (ulong, ReadonlyBytes) ParseDeltaTime(in ReadonlyBytes bytes)
@@ -299,30 +310,73 @@ namespace Nsmf
 
     public class Event
     {
-        public static (Event, ReadonlyBytes) FromBytes(in ReadonlyBytes bytes)
+        public static (Event, ReadonlyBytes)? FromBytes(in ReadonlyBytes bytes)
         {
             (byte eventFirstByte, ReadonlyBytes bytesByFirstBytes) = bytes.GetUInt8();
-            switch (eventFirstByte)
+            byte firstLeft = (byte)(eventFirstByte >> 4);
+            byte firstRight = (byte)(eventFirstByte & 0b00001111);
+            switch (firstLeft, firstRight)
             {
-                case 0xff:
+                case (0x8, var channel):
+                    {
+                        (byte noteNumber, ReadonlyBytes bytesAfterNoteNumber) = bytesByFirstBytes.GetUInt8();
+                        return (
+                            new NoteOnOrOff(channel, noteNumber, 0),
+                            bytesAfterNoteNumber.CreateWithStartIndex(1)
+                        );
+                    }
+                case (0x9, var channel):
+                    {
+                        (byte noteNumber, ReadonlyBytes bytesAfterNoteNumber) = bytesByFirstBytes.GetUInt8();
+                        (byte velocity, ReadonlyBytes bytesAfterBelocity) = bytesAfterNoteNumber.GetUInt8();
+                        return (
+                            new NoteOnOrOff(channel, noteNumber, velocity),
+                            bytesAfterBelocity
+                        );
+                    }
+                case (0xf, 0xf):
                     {
                         return MetaEvent.MetaEventFromBytes(bytesByFirstBytes);
-                    }
-                case 0xf0 or 0xf7:
+                    };
+                case (0xf, 0x0):
+                case (0xf, 0x7):
                     {
                         return SysExEvent.SysExEventFromBytes(bytesByFirstBytes);
-                    }
-            }
+                    };
 
-            throw new System.NotImplementedException("メタイベント, SysEx以外のイベントの解析は未実装です");
+                default:
+                    {
+                        UnityEngine.Debug.Log("未実装のイベントです");
+                        return null;
+                    }
+            };
         }
     }
 
     public class MidiEvent : Event
     {
-        public static (MidiEvent, ReadonlyBytes) MidiEventFromBytes(in ReadonlyBytes bytes)
+    }
+
+    public class NoteOnOrOff : MidiEvent
+    {
+        public readonly byte channel;
+        public readonly byte noteNumber;
+        public readonly byte velocity;
+
+        public NoteOnOrOff(in byte channel, in byte noteNumber, in byte velocity)
         {
-            return (new MidiEvent(), bytes);
+            if(15 < channel)
+            {
+                throw new System.Exception("channel 番号が 15 を超えることはできません");
+            }
+            this.channel = channel;
+            this.noteNumber = noteNumber;
+            this.velocity = velocity;
+        }
+
+        public bool IsOff()
+        {
+            return this.velocity == 0;
         }
     }
 
@@ -374,7 +428,7 @@ namespace Nsmf
                         new EndOfTrack(),
 
                     0x51 =>
-                     Tempo.FromBytes(bodyBytes),
+                     Tempo.FromTempoBytes(bodyBytes),
 
                     0x54 =>
                         throw new System.NotImplementedException("SMPTE オフセットは未実装です"),
@@ -407,7 +461,7 @@ namespace Nsmf
             this.tempo = 60 * 1000 * 1000 / micro;
         }
 
-        public static Tempo FromBytes(in ReadonlyBytes bytes)
+        public static Tempo FromTempoBytes(in ReadonlyBytes bytes)
         {
             (byte tempoByte0, ReadonlyBytes bytes0) = bytes.GetUInt8();
             (byte tempoByte1, ReadonlyBytes bytes1) = bytes0.GetUInt8();

@@ -249,7 +249,8 @@ namespace Nsmf
             ReadonlyBytes bytesInLoop = bytesAfterParseLength;
             for (uint timeAndEventIndex = 0; timeAndEventIndex < length; timeAndEventIndex += 1)
             {
-                switch (TimeAndEvent.FromBytes(bytesInLoop)) {
+                switch (TimeAndEvent.FromBytes(bytesInLoop))
+                {
                     case (TimeAndEvent timeAndEvent, ReadonlyBytes newBytes):
                         {
                             timeAndEvents.Add(timeAndEvent);
@@ -365,7 +366,7 @@ namespace Nsmf
 
         public NoteOnOrOff(in byte channel, in byte noteNumber, in byte velocity)
         {
-            if(15 < channel)
+            if (15 < channel)
             {
                 throw new System.Exception("channel 番号が 15 を超えることはできません");
             }
